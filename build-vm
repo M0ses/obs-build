@@ -261,7 +261,7 @@ vm_parse_options() {
         VM_CUSTOMOPT="$ARG"
         shift
       ;;
-      -os-flavor)
+      -openstack-flavor)
         needarg
         VM_OS_FLAVOR="$ARG"
         shift

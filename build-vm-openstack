@@ -96,6 +96,12 @@ cloud_volume_detach_openstack() {
     local VM_SERVER=${1:37:36}
     local VM_VOL_ID=${1:0:36}
 
+    if [ -z "$VM_SERVER" -o -z "$VM_VOL_ID" ];then
+        # Cannot proceed anyway - guess volume never got attached
+        echo "__not_attached__"
+        return 0
+    fi
+
     # needed at all?
     $NOVACLIENT volume-detach "$VM_SERVER" "$VM_VOL_ID"
 
@@ -112,7 +118,7 @@ cloud_volume_detach_openstack() {
     fi
     # umount seems not to be enough
     sync
-    
+
     if ! $NOVACLIENT volume-detach "$VM_SERVER" "$VM_VOL_ID"; then
 	echo "ERROR: nova detach of $VM_VOL_ID failed." >&2
         return 3
@@ -128,7 +134,7 @@ cloud_volume_detach_openstack() {
 vm_verify_options_openstack() {
 
     # Checking for required tools (nova and cinder)
-    
+
     NOVACLIENT=`type -p nova`
     if test -z "$NOVACLIENT" ; then
         cleanup_and_exit 3 "ERROR: nova not installed. Please install nova and try again"
@@ -243,7 +249,7 @@ wait_for_delete_instance() {
 }
 
 vm_startup_openstack() {
-    VM_VOL_ROOT_ID=`cinder_volume2id ${VM_VOLUME_NAME}`    
+    VM_VOL_ROOT_ID=`cinder_volume2id ${VM_VOLUME_NAME}`
     VM_VOL_SWAP_ID=`cinder_volume2id ${VM_VOLUME_SWAP}`
     VM_VOL_BOOT_ID=`cinder_volume2id ${VM_VOLUME_GRUB}`
 
@@ -256,9 +262,19 @@ vm_startup_openstack() {
 	--poll "$VM_WORKER" || cleanup_and_exit 3\
     `
     WS_URL=`$NOVACLIENT get-serial-console $VM_WORKER|grep serial |perl -p -e 's#.*(ws://.*) \|#$1#'`
+
+    # Wait a minute to get serial console
+    COUNTER=60
+
+    while [ -z "$WS_URL" -a $COUNTER -gt 0 ];do
+      WS_URL=`$NOVACLIENT get-serial-console $VM_WORKER|grep serial |perl -p -e 's#.*(ws://.*) \|#$1#'`
+      sleep 1
+      COUNTER=$(($COUNTER - 1))
+    done
+
     VM_BUILD_ID=`_get_field "$OUTPUT" id`
 
-    if ! $BUILD_DIR/os-console/client "${WS_URL}";then
+    if ! $BUILD_DIR/openstack-console "${WS_URL}";then
       $NOVACLIENT delete $VM_BUILD_ID
       cleanup_and_exit 3
     else
